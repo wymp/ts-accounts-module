@@ -1,0 +1,69 @@
+{
+  "name": "@wymp/accounts-module",
+  "version": "0.1.0",
+  "description": "Functions comprising a complete accounts management system, including an authentication flow for obtaining a sessions via email and password with optional 2fa, as well as verifying email addresses.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "check": "npx tsc --noEmit",
+    "test": "jest",
+    "prepublishOnly": "rm -Rf dist; npx tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://github.com:meeaak/ts-accounts-module.git"
+  },
+  "keywords": [
+    "accounts",
+    "sessions",
+    "login",
+    "authentication"
+  ],
+  "author": "",
+  "license": "Proprietary (Openfinance)",
+  "bugs": {
+    "url": "https://github.com/openfinanceio/auth-gateway-src/issues"
+  },
+  "homepage": "https://github.com/openfinanceio/auth-gateway-src#readme",
+  "dependencies": {
+    "@openfinanceio/cache": "^1.2.0",
+    "@openfinanceio/http-errors": "^1.5.1",
+    "@types/node": "^8.10.58",
+    "@types/uuid": "^8.3.0",
+    "ts-simple-interfaces": "^0.4.3",
+    "uuid": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^24.0.17",
+    "@types/moment": "^2.13.0",
+    "@types/sinon": "^9.0.5",
+    "husky": "^1.3.1",
+    "jest": "^24.8.0",
+    "node-mocks-http": "^1.7.6",
+    "prettier": "^1.16.0",
+    "pretty-quick": "^1.10.0",
+    "sinon": "^9.0.3",
+    "ts-jest": "^24.0.2",
+    "ts-simple-interfaces-testing": "^0.4.0",
+    "typescript": "^3.8.3",
+    "webpack": "^4.20.2",
+    "webpack-cli": "^3.1.1"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "trailingComma": "es5"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "pretty-quick --staged"
+    }
+  },
+  "jest": {
+    "roots": [
+      "<rootDir>/tests"
+    ],
+    "transform": {
+      "^.+\\.tsx?$": "ts-jest"
+    }
+  }
+}
