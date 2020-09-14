@@ -1,6 +1,9 @@
 Accounts Module
 =========================================================================
 
+> :warning: **NOTE: This library is in active alpha development and is not yet ready for 
+>  production.**
+
 **The goal of this module is to provide a foundation for the creation of an enterprise-grade
 accounts management system, including concepts of users, organizations, clients (api keys), and
 login sessions.**
@@ -45,4 +48,11 @@ of how to make it work.
 
 ## Concepts
 
+....
 
+## Notes to Self
+
+* Can we pass in type definitions for the primary objects (User, Session, Organization, Client,
+  etc.), rather than enforcing concrete types that are defined by the library? The library could
+  then define an Io implementation according to its own concrete types, but be adaptable to other
+  definitions of users, etc.
