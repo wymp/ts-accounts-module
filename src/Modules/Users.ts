@@ -1,6 +1,6 @@
 import * as uuid from "uuid";
 import * as E from "@openfinanceio/http-errors";
-import { ModDeps, Auth } from "../Types";
+import { ModDeps, Auth, isPromise } from "../Types";
 
 /**
  *
@@ -139,6 +139,3 @@ export const createUser = async (
   return session;
 };
 
-const isPromise = <T>(f: any): f is Promise<T> => {
-  return typeof f.then === "function";
-}

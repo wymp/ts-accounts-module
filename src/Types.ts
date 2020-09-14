@@ -5,7 +5,7 @@ import * as E from "@openfinanceio/http-errors";
 export const emailPattern = "^[A-Z0-9._%+-]+@[A-Z0-9.-]+.[A-Z]{2,}$";
 
 export const isPromise = <T>(f: any): f is Promise<T> => {
-  return typeof f.then === "function";
+  return f && typeof f.then === "function";
 }
 
 export interface Bcrypt {
@@ -91,20 +91,21 @@ export interface IoInterface {
   ): Promise<Auth.Db.SessionToken>;
 }
 
-export interface LibInterface {
+declare type LogDeps = { log: SimpleLoggerInterface };
+export interface LibInterface<VerLinkDeps extends LogDeps, SendCodeEmailDeps extends LogDeps> {
   validateEmail(email: string): Array<E.ObstructionInterface>;
   validatePasswordLength(password: string): Array<E.ObstructionInterface>;
   validatePasswordEntropy(password: string): Array<E.ObstructionInterface>;
 
   sendVerificationCodeEmail(
     email: string,
-    r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig; }
+    r: VerLinkDeps & SendCodeEmailDeps & { io: IoInterface; config: AccountsModuleConfig; }
   ): Promise<Auth.Db.VerificationCode & { code: string }>;
 
   sendLoginCodeEmail(
     email: string,
     userGeneratedToken: string,
-    r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig; }
+    r: VerLinkDeps & SendCodeEmailDeps & { io: IoInterface; config: AccountsModuleConfig; }
   ): Promise<Auth.Db.VerificationCode & { code: string }>;
 
   generateVerificationCode(
@@ -130,7 +131,7 @@ export type ModDeps = {
   log: SimpleLoggerInterface;
   config: AccountsModuleConfig;
   io: IoInterface;
-  accountsLib: LibInterface;
+  accountsLib: LibInterface<LogDeps, LogDeps>;
   bcrypt: Bcrypt;
   cache: CacheInterface;
 }

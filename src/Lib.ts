@@ -12,7 +12,7 @@ import { IoInterface, LibInterface, emailPattern, AccountsModuleConfig, Auth } f
  * functionality.**
  */
 declare type LogDeps = { log: SimpleLoggerInterface };
-export abstract class Lib<VerLinkDeps extends LogDeps = LogDeps, SendCodeEmailDeps extends LogDeps = LogDeps> implements LibInterface {
+export abstract class Lib<VerLinkDeps extends LogDeps, SendCodeEmailDeps extends LogDeps> implements LibInterface<VerLinkDeps, SendCodeEmailDeps> {
   /**
    * Email verifications for user creation
    */

@@ -56,3 +56,5 @@ of how to make it work.
   etc.), rather than enforcing concrete types that are defined by the library? The library could
   then define an Io implementation according to its own concrete types, but be adaptable to other
   definitions of users, etc.
+* **The current implementation doesn't type-check on dependencies to for the accounts lib.** Need
+  to jump through a few more hoops for that to work.
