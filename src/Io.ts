@@ -1,19 +1,16 @@
-import { createHash, randomBytes } from "crypto";
-import { SimpleLoggerInterface, SimpleSqlDbInterface, SqlValue } from "ts-simple-interfaces";
-import * as uuid from "uuid";
+import { createHash } from "crypto";
+import { SimpleLoggerInterface, SimpleSqlDbInterface } from "ts-simple-interfaces";
 import { CacheInterface } from "@openfinanceio/cache";
-import { Auditor, Auth, Globals } from "@openfinanceio/data-model-specification";
 import * as E from "@openfinanceio/http-errors";
-import { OfnPubSubInterface } from "@openfinanceio/service-lib";
-import { AppDeps, VerificationEmail } from "./Types";
+import { Auth, IoInterface } from "./Types";
 
 /**
  * This class abstracts all io access into generalized or specific declarative method calls
  */
-export class Io {
+export class Io implements IoInterface {
   public constructor(
     protected db: SimpleSqlDbInterface,
-    protected _cache: CacheInterface
+    protected _cache?: CacheInterface
   ) {}
 
   /**
@@ -28,8 +25,12 @@ export class Io {
     log?: SimpleLoggerInterface
   ): T | Promise<T> | undefined {
     if (this._cache) {
-      return this.cache.get<T>(key, q, ttlSec, log);
-    } else if (q) {
+      if (typeof q === "function") {
+        return this._cache.get<T>(key, q, ttlSec, log);
+      } else {
+        return this._cache.get<T>(key, q);
+      }
+    } else if (typeof q === "function") {
       return q();
     }
     return undefined;
@@ -98,7 +99,7 @@ export class Io {
         const { rows } = await this.db.query<
           Auth.Db.User & Auth.LoginEmailAttributes & { loginEmailCreatedMs: number }
         >(
-          "SELECT `u`.*, `e`.`email`, `e`.`verified`, `e`.`createdMs` as `loginEmailCreatedMs` " +
+          "SELECT `u`.*, `e`.`email`, `e`.`verifiedMs`, `e`.`createdMs` as `loginEmailCreatedMs` " +
             "FROM `users` `u` JOIN `login-emails` `e` ON (`u`.`id` = `e`.`userId`) " +
             "WHERE `e`.`email` = ?",
           [email]
@@ -134,7 +135,7 @@ export class Io {
     const loginEmail = {
       email,
       userId,
-      verified: 0,
+      verifiedMs: null,
       createdMs: Date.now(),
     }
 
@@ -143,9 +144,9 @@ export class Io {
       log.debug(`No user found with this email. Inserting email ${obf} for user ${userId}`);
       await this.db.query(
         "INSERT INTO `login-emails` " +
-        "(`email`, `userId`, `verified`, `createdMs`) " +
+        "(`email`, `userId`, `verifiedMs`, `createdMs`) " +
         "VALUES (?)",
-        [[ loginEmail.email, loginEmail.userId, loginEmail.verified, loginEmail.createdMs]]
+        [[ loginEmail.email, loginEmail.userId, loginEmail.verifiedMs, loginEmail.createdMs]]
       );
     } else {
       // If we found a user with this email, make sure the id is the same
@@ -188,7 +189,7 @@ export class Io {
   public async saveVerificationCode(
     verification: Auth.Db.VerificationCode,
     log: SimpleLoggerInterface
-  ): Promise<Auth.Db.VerificationCode & { code: Buffer }> {
+  ): Promise<Auth.Db.VerificationCode> {
     // Insert
     await this.db.query(
       "INSERT INTO `verification-codes` " +
@@ -197,7 +198,7 @@ export class Io {
       "VALUES (?)",
       [[
         verification.codeSha256,
-        verificat.type,
+        verification.type,
         verification.email,
         verification.userGeneratedToken,
         verification.createdMs,
@@ -298,7 +299,10 @@ export class Io {
     email: string,
     log: SimpleLoggerInterface
   ): Promise<void> {
-    this.db.query("UPDATE `login-emails` SET `verified` = 1 WHERE `email` = ?", [email]);
+    this.db.query(
+      "UPDATE `login-emails` SET `verifiedMs` = ? WHERE `email` = ?",
+      [Date.now(), email]
+    );
   }
 
   /**

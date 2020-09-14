@@ -1,4 +1,17 @@
 import { SimpleLoggerInterface } from "ts-simple-interfaces";
+import { CacheInterface } from "@openfinanceio/cache";
+import * as E from "@openfinanceio/http-errors";
+
+export const emailPattern = "^[A-Z0-9._%+-]+@[A-Z0-9.-]+.[A-Z]{2,}$";
+
+export const isPromise = <T>(f: any): f is Promise<T> => {
+  return typeof f.then === "function";
+}
+
+export interface Bcrypt {
+  compare(secret: string, secretHash: string | Buffer): Promise<boolean>;
+  hash(secret: string | Buffer, saltOrRounds: number | string): Promise<string>;
+}
 
 export type AccountsModuleConfig = {
   expires: {
@@ -10,6 +23,22 @@ export type AccountsModuleConfig = {
 };
 
 export interface IoInterface {
+  insertUser(
+    user: Auth.Db.User,
+    log: SimpleLoggerInterface
+  ): Promise<Auth.Db.User>;
+
+  insertLoginEmail(
+    userId: string,
+    email: string,
+    log: SimpleLoggerInterface
+  ): Promise<Auth.Db.LoginEmail>;
+
+  saveVerificationCode(
+    verification: Auth.Db.VerificationCode,
+    log: SimpleLoggerInterface
+  ): Promise<Auth.Db.VerificationCode>;
+
   consumeVerificationCode(
     code: string,
     userGeneratedToken: string | null,
@@ -32,6 +61,12 @@ export interface IoInterface {
     thrw?: false
   ): Promise<Auth.Db.VerificationCode | undefined>;
 
+  invalidateVerificationCodesFor(
+    type: string,
+    email: string,
+    log: SimpleLoggerInterface
+  ): Promise<void>;
+
   getUserByEmail(
     email: string,
     log: SimpleLoggerInterface,
@@ -45,51 +80,32 @@ export interface IoInterface {
     (Auth.Db.User & Auth.LoginEmailAttributes & { loginEmailCreatedMs: number }) | undefined
   >;
 
-  invalidateVerificationCodesFor(
-    type: string,
-    email: string,
+  insertSession(
+    session: Auth.Db.Session,
     log: SimpleLoggerInterface
-  ): Promise<void>;
+  ): Promise<Auth.Db.Session>;
 
-  generateVerificationCode(
-    type: "login" | "verification",
-    email: string,
-    userGeneratedToken: string | null,
-    expiresMs: number,
+  insertSessionToken(
+    token: Auth.Db.SessionToken,
     log: SimpleLoggerInterface
-  ): Promise<Auth.Db.VerificationCode & { code: Buffer }>;
-
-  generateSession(
-    userId: string,
-    userAgent: string | undefined,
-    log: SimpleLoggerInterface
-  ): Promise<Auth.Api.Authn.Session>;
-
-  insertUser(
-    user: Auth.Db.User,
-    log: SimpleLoggerInterface
-  ): Promise<Auth.Db.User>;
-
-  insertLoginEmail(
-    userId: string,
-    email: string,
-    log: SimpleLoggerInterface
-  ): Promise<void>;
+  ): Promise<Auth.Db.SessionToken>;
 }
 
 export interface LibInterface {
+  validateEmail(email: string): Array<E.ObstructionInterface>;
+  validatePasswordLength(password: string): Array<E.ObstructionInterface>;
+  validatePasswordEntropy(password: string): Array<E.ObstructionInterface>;
+
   sendVerificationCodeEmail(
     email: string,
-    expiresMs: number,
-    r: { io: IoInterface; log: SimpleLoggerInterface; }
-  ): Promise<void>;
+    r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig; }
+  ): Promise<Auth.Db.VerificationCode & { code: string }>;
 
   sendLoginCodeEmail(
     email: string,
     userGeneratedToken: string,
-    expiresMs: number,
-    r: { io: IoInterface; log: SimpleLoggerInterface; }
-  ): Promise<void>;
+    r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig; }
+  ): Promise<Auth.Db.VerificationCode & { code: string }>;
 
   generateVerificationCode(
     type: "login" | "verification",
@@ -97,13 +113,26 @@ export interface LibInterface {
     userGeneratedToken: string | null,
     expiresMs: number,
     r: { io: IoInterface; log: SimpleLoggerInterface; }
-  ): Promise<Auth.Db.VerificationCode & { code: Buffer }>;
+  ): Promise<Auth.Db.VerificationCode & { code: string }>;
 
   generateSession(
     userId: string,
     userAgent: string | undefined,
+    ip: string | undefined,
     r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig }
   ): Promise<Auth.Api.Authn.Session>;
+}
+
+/**
+ * A convenience object representing the expected dependencies for this module
+ */
+export type ModDeps = {
+  log: SimpleLoggerInterface;
+  config: AccountsModuleConfig;
+  io: IoInterface;
+  accountsLib: LibInterface;
+  bcrypt: Bcrypt;
+  cache: CacheInterface;
 }
 
 export namespace Auth {
@@ -126,12 +155,12 @@ export namespace Auth {
   export type ReqInfo = {
     k: string;
     a: boolean;
-    r: Array<Globals.ClientRoles>;
+    r: Array<string>;
     ip: string;
     u?: {
       id: string;
-      r: Array<Globals.UserRoles>;
-      s: Array<Globals.AuthScopes> | null;
+      r: Array<string>;
+      s: Array<string> | null;
     };
   };
 
@@ -190,7 +219,7 @@ export namespace Auth {
 
   export type LoginEmailAttributes = {
     email: string;
-    verified: 0 | 1;
+    verifiedMs: number | null;
     createdMs: number;
   };
 
@@ -206,14 +235,14 @@ export namespace Auth {
   };
 
   export type UserRoleAttributes = {
-    roleId: Globals.UserRoles;
+    roleId: string;
   };
 
   export type SessionAttributes = {
     userAgent: string | null;
     ip: string;
     refreshTokenSha256: Buffer;
-    invalidated: 0 | 1;
+    invalidatedMs: number | null;
     createdMs: number;
     expiresMs: number;
   };
@@ -283,7 +312,6 @@ export namespace Auth {
    */
   export namespace Db {
     // Apis are identified by their domain and version, so no formal "id" property here
-    export type Api = ApiAttributes;
     export type Organization = { id: string } & OrganizationAttributes;
     export type Client = ClientAttributes & {
       id: string;
@@ -298,6 +326,7 @@ export namespace Auth {
     export type SessionToken = {
       tokenSha256: Buffer;
       sessionId: string;
+      createdMs: number;
       expiresMs: number;
     };
   }

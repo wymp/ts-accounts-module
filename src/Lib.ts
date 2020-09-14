@@ -1,12 +1,93 @@
 import { createHash, randomBytes } from "crypto";
 import { SimpleLoggerInterface } from "ts-simple-interfaces";
-import { IoInterface, LibInterface } from "./Types";
+import * as uuid  from "uuid";
+import * as E from "@openfinanceio/http-errors";
+import { IoInterface, LibInterface, emailPattern, AccountsModuleConfig, Auth } from "./Types";
 
 /**
  * We're encapsulating our library as a class so that dependents can easily override methods to
  * achieve finely-tuned final functionality.
+ *
+ * **NOTE: THIS IS NOT A STATEFUL LIBRARY. It is only a class to make it easier to override certain
+ * functionality.**
  */
-export abstract class Lib implements LibInterface {
+declare type LogDeps = { log: SimpleLoggerInterface };
+export abstract class Lib<VerLinkDeps extends LogDeps = LogDeps, SendCodeEmailDeps extends LogDeps = LogDeps> implements LibInterface {
+  /**
+   * Email verifications for user creation
+   */
+  public validateEmail(email: string): Array<E.ObstructionInterface> {
+    if (!email.match(new RegExp(emailPattern, "i"))) {
+      return [{
+        code: "Invalid Email",
+        text: "The email address you've provided doesn't appear valid according to our standards.",
+        params: {
+          input: email,
+          regex: emailPattern,
+        },
+      }];
+    }
+    return [];
+  }
+
+  /**
+   * Validate password length
+   */
+  public validatePasswordLength(password: string): Array<E.ObstructionInterface> {
+    const obstructions: Array<E.ObstructionInterface> = [];
+    if (password.length < 8) {
+      obstructions.push({
+        code: "Password",
+        text: "Must be at least 8 characters long",
+        params: { passwordLength: password.length },
+      });
+    }
+    if (password.length > 72) {
+      obstructions.push({
+        code: "Password",
+        text: "Cannot exceed 72 characters",
+        params: { passwordLength: password.length },
+      });
+    }
+    return obstructions;
+  }
+
+  /**
+   * Validate password entropy
+   */
+  public validatePasswordEntropy(password: string): Array<E.ObstructionInterface> {
+    const obstructions: Array<E.ObstructionInterface> = [];
+    let m = password.match(/([a-z])/);
+    if (m === null || m.length < 2) {
+      obstructions.push({
+        code: "Password",
+        text: "Must have at least 2 lower-case letters",
+      });
+    }
+    m = password.match(/([A-Z])/);
+    if (m === null || m.length < 2) {
+      obstructions.push({
+        code: "Password",
+        text: "Must have at least 2 upper-case letters",
+      });
+    }
+    m = password.match(/([0-9])/);
+    if (m === null || m.length < 2) {
+      obstructions.push({
+        code: "Password",
+        text: "Must have at least 2 numbers",
+      });
+    }
+    m = password.match(/([^a-zA-Z0-9])/);
+    if (m === null || m.length < 2) {
+      obstructions.push({
+        code: "Password",
+        text: "Must have at least 2 non alpha-numeric characters",
+      });
+    }
+    return obstructions;
+  }
+
   /**
    * Send a new email verification code to the given email, invalidating all others already sent.
    *
@@ -14,25 +95,25 @@ export abstract class Lib implements LibInterface {
    */
   public async sendVerificationCodeEmail(
     email: string,
-    r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig; }
-  ): Promise<void> => {
+    r: VerLinkDeps & SendCodeEmailDeps & { io: IoInterface; config: AccountsModuleConfig; }
+  ): Promise<Auth.Db.VerificationCode & { code: string }> {
     r.log.debug(`Running sendVerificationCodeEmail`);
-    await this.sendLoginOrVerCodeEmail(
+    return await this.sendLoginOrVerCodeEmail(
       email,
       "verification",
       null,
       Date.now() + 1000 * 60 * r.config.expires.verificationCodeMin,
-      r);
+      r
+    );
   }
 
   public async sendLoginCodeEmail(
     email: string,
     userGeneratedToken: string,
-    expiresMs: number,
-    r: { io: IoInterface; log: SimpleLoggerInterface; }
-  ): Promise<void> {
+    r: VerLinkDeps & SendCodeEmailDeps & { io: IoInterface; config: AccountsModuleConfig; }
+  ): Promise<Auth.Db.VerificationCode & { code: string }> {
     r.log.debug(`Running sendLoginCodeEmail`);
-    await this.sendLoginOrVerCodeEmail(
+    return await this.sendLoginOrVerCodeEmail(
       email,
       "login",
       userGeneratedToken,
@@ -47,8 +128,8 @@ export abstract class Lib implements LibInterface {
     userGeneratedToken: string | null,
     expiresMs: number,
     r: { io: IoInterface; log: SimpleLoggerInterface; }
-  ): Promise<Auth.Db.VerificationCode & { code: Buffer }> {
-    log.debug(`Generating new verification code`);
+  ): Promise<Auth.Db.VerificationCode & { code: string }> {
+    r.log.debug(`Generating new verification code`);
 
     // Generate
     const code = randomBytes(32);
@@ -69,9 +150,9 @@ export abstract class Lib implements LibInterface {
       invalidatedMs: null,
     };
 
-    await r.io.insertVerificationCode(verification, r.log);
+    await r.io.saveVerificationCode(verification, r.log);
 
-    return { code, ...verification };
+    return { code: code.toString("hex"), ...verification };
   }
 
   /**
@@ -80,6 +161,7 @@ export abstract class Lib implements LibInterface {
   public async generateSession(
     userId: string,
     userAgent: string | undefined,
+    ip: string,
     r: { io: IoInterface; log: SimpleLoggerInterface; config: AccountsModuleConfig }
   ): Promise<Auth.Api.Authn.Session> {
     // Create session
@@ -91,12 +173,12 @@ export abstract class Lib implements LibInterface {
       {
         id: uuid.v4(),
         userAgent: userAgent || null,
-        ip: auth.ip,
+        ip,
         userId: userId,
         refreshTokenSha256: createHash("sha256")
           .update(refreshToken)
           .digest(),
-        invalidated: 0,
+        invalidatedMs: null,
         createdMs: Date.now(),
         expiresMs: Date.now() + 1000 * 60 * 60 * r.config.expires.sessionHour,
       },
@@ -108,6 +190,7 @@ export abstract class Lib implements LibInterface {
           .update(sessionToken)
           .digest(),
         sessionId: session.id,
+        createdMs: Date.now(),
         expiresMs: Date.now() + 1000 * 60 * r.config.expires.sessionTokenMin,
       },
       r.log
@@ -120,21 +203,20 @@ export abstract class Lib implements LibInterface {
     };
   }
 
-
   protected async sendLoginOrVerCodeEmail(
     email: string,
     type: "login" | "verification",
     userGeneratedToken: string | null,
     expiresMs: number,
-    r: { io: IoInterface; log: SimpleLoggerInterface; }
-  ): Promise<void> => {
+    r: VerLinkDeps & SendCodeEmailDeps & { io: IoInterface }
+  ): Promise<Auth.Db.VerificationCode & { code: string }> {
     r.log.debug(`Running sendLoginOrVerCodeEmail`);
 
     // Invalidate current verifications
     r.log.debug(`Invalidating existing ${type} codes and getting user by email`);
     const [user] = await Promise.all([
       r.io.getUserByEmail(email, r.log, true),
-      r.io.invalidateVerificationCodesFor(type, email),
+      r.io.invalidateVerificationCodesFor(type, email, r.log),
     ]);
 
     const verification = await this.generateVerificationCode(
@@ -142,21 +224,22 @@ export abstract class Lib implements LibInterface {
       email,
       userGeneratedToken,
       expiresMs,
-      r.log
+      r
     );
 
-    const codeStr = verification.code.toString("hex");
-    const verificationLink = this.generateVerificationLink(type, codeStr, userGeneratedToken, r.log);
+    const verificationLink = this.generateVerificationLink(type, verification.code, userGeneratedToken, r);
 
     // Send email
-    await this.sendCodeEmail(type, email, user, verificationLink, r.log);
+    await this.sendCodeEmail(type, email, user, verificationLink, r);
+
+    return verification;
   }
 
   protected abstract generateVerificationLink(
     type: "login" | "verification",
     code: string,
-    userGeneratedToken: string | undefined,
-    log: SimpleLoggerInterface
+    userGeneratedToken: string | null,
+    r: VerLinkDeps
   ): string;
 
   protected abstract sendCodeEmail(
@@ -164,6 +247,6 @@ export abstract class Lib implements LibInterface {
     toEmail: string,
     user: Auth.Db.User,
     verificationLink: string,
-    log: SimpleLoggerInterface
-  );
+    r: SendCodeEmailDeps
+  ): Promise<unknown>;
 }
