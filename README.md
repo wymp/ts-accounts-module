@@ -8,9 +8,9 @@ Accounts Module
 accounts management system, including concepts of users, organizations, clients (api keys), and
 login sessions.**
 
-Module functionality depends on an Io abstraction interface so that you may store objects in
-whatever way you wish. The module additionally provides a ready-made database schema and Io
-implementation that should work out of the box.
+Module functionality depends on an I/O abstraction interface so that you may store objects in
+whatever way you wish. The module additionally provides a ready-made database schema and
+corresponding I/O implementation that should work out of the box.
 
 It also depends on a Lib interface with an accompanying implementation that was constructed to allow
 dependents to extend it (or façade it) to provide variations on its functionality. In the event that
@@ -21,7 +21,7 @@ In the worst case scenario, I hope that this module at least serves as an exampl
 together an enterprise-grade auth and session management system. You may feel free to just
 copy/paste code directly from the library into your own work if it makes things easier for you.
 
-Following is a more in-depth description of how the concepts comprising the system and an example
+Following is a more in-depth description of the concepts comprising the system and an example
 of how to make it work.
 
 ## TL;DR
@@ -48,7 +48,7 @@ of how to make it work.
 
 ## Concepts
 
-....
+(To-do....)
 
 ## Notes to Self
 
@@ -56,5 +56,5 @@ of how to make it work.
   etc.), rather than enforcing concrete types that are defined by the library? The library could
   then define an Io implementation according to its own concrete types, but be adaptable to other
   definitions of users, etc.
-* **The current implementation doesn't type-check on dependencies to for the accounts lib.** Need
+* **The current implementation doesn't type-check on dependencies for the accounts lib.** Need
   to jump through a few more hoops for that to work.
